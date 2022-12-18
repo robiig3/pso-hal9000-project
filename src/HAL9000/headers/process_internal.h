@@ -5,6 +5,7 @@
 #include "process.h"
 #include "synch.h"
 #include "ex_event.h"
+#include "thread_internal.h"
 
 #define PROCESS_MAX_PHYSICAL_FRAMES     16
 #define PROCESS_MAX_OPEN_FILES          16

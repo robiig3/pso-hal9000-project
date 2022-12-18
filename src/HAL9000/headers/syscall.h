@@ -3,7 +3,7 @@
 #include "process_internal.h"
 #include "syscall_defs.h"
 #include "thread_internal.h"
-#include "filesystem.h"
+//#include "filesystem.h"
 
 
 typedef struct _PROCESS_HANDLE {
@@ -22,22 +22,40 @@ struct _PROCESS_HANDLE_LIST {
     LIST_ENTRY ProcessHandleListHead;
 };
 
-typedef struct _FILE_HANDLE {
+//typedef struct _FILE_HANDLE {
+//
+//    FILE_OBJECT          File;
+//
+//    UM_HANDLE            Handle;
+//
+//    LIST_ENTRY           FileHandleList;
+//
+//} FILE_HANDLE, * FILE_HANDLE;
+//
+//
+//struct _FILE_HANDLE_LIST {
+//
+//    LIST_ENTRY FileHandleListHead;
+//};
 
-    FILE_OBJECT          File;
+typedef struct _THREAD_HANDLE {
+
+    struct _THREAD*      Thread;
 
     UM_HANDLE            Handle;
 
-    LIST_ENTRY           FileHandleList;
+    LIST_ENTRY           ThreadHandleList;
 
-} FILE_HANDLE, * FILE_HANDLE;
+} THREAD_HANDLE, * PTHREAD_HANDLE;
 
 
-struct _FILE_HANDLE_LIST {
+struct _THREAD_HANDLE_LIST {
 
-    LIST_ENTRY FileHandleListHead;
+    //lacat
+
+    LIST_ENTRY ThreadHandleList;
+
 };
-
 
 void
 SyscallPreinitSystem(
