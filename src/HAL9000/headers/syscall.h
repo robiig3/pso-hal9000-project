@@ -3,7 +3,7 @@
 #include "process_internal.h"
 #include "syscall_defs.h"
 #include "thread_internal.h"
-//#include "filesystem.h"
+#include "filesystem.h"
 
 
 typedef struct _PROCESS_HANDLE {
@@ -22,21 +22,21 @@ struct _PROCESS_HANDLE_LIST {
     LIST_ENTRY ProcessHandleListHead;
 };
 
-//typedef struct _FILE_HANDLE {
-//
-//    FILE_OBJECT          File;
-//
-//    UM_HANDLE            Handle;
-//
-//    LIST_ENTRY           FileHandleList;
-//
-//} FILE_HANDLE, * FILE_HANDLE;
-//
-//
-//struct _FILE_HANDLE_LIST {
-//
-//    LIST_ENTRY FileHandleListHead;
-//};
+typedef struct _FILE_HANDLE {
+
+    PFILE_OBJECT          File;
+
+    UM_HANDLE            Handle;
+
+    LIST_ENTRY           FileHandleList;
+
+} FILE_HANDLE, * PFILE_HANDLE;
+
+
+struct _FILE_HANDLE_LIST {
+
+    LIST_ENTRY FileHandleListHead;
+};
 
 typedef struct _THREAD_HANDLE {
 
@@ -50,8 +50,6 @@ typedef struct _THREAD_HANDLE {
 
 
 struct _THREAD_HANDLE_LIST {
-
-    //lacat
 
     LIST_ENTRY ThreadHandleList;
 
@@ -75,4 +73,37 @@ SyscallUninitSystem(
 void
 SyscallCpuInit(
     void
+);
+
+STATUS
+FindProcessByUM_HANDLE(
+    IN UM_HANDLE ProcessHandle,
+    OUT PPROCESS* Process
+);
+
+STATUS
+CloseAndDeleteProcessByUM_HANDLE(
+    IN UM_HANDLE        ProcessHandle
+);
+
+STATUS
+FindFileByUM_HANDLE(
+    IN UM_HANDLE                 FileHandle,
+    OUT PFILE_OBJECT* pFile
+);
+
+STATUS
+CloseAndDeleteFileByUM_HANDLE(
+    IN UM_HANDLE                 FileHandle
+);
+
+STATUS
+FindThreadByUM_HANDLE(
+    IN UM_HANDLE ThreadHandle,
+    OUT PTHREAD* pThread
+);
+
+STATUS
+CloseAndDeleteThreadByUM_HANDLE(
+    IN UM_HANDLE        ThreadHandle
 );
