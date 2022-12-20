@@ -317,8 +317,12 @@ ProcessWaitForTermination(
     ASSERT(Process != NULL);
     ASSERT(TerminationStatus != NULL);
 
+    //LOG("entered ProcessWaitForTermination\n");
+        
     ExEventWaitForSignal(&Process->TerminationEvt);
+    //LOG("exit exeventwaitfor signal \n");
     *TerminationStatus = Process->TerminationStatus;
+    //LOG("exit ProcessWaitForTermination\n");
 }
 
 void

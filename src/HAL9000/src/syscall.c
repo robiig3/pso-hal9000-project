@@ -21,7 +21,7 @@ extern void SyscallEntry();
 #define TAG_CREATE_THREAD 'TCR'
 #define TAG_CREATE_FILE 'FCR'
 
-UM_HANDLE HANDLE_ID_INCREMENT = 1;
+UM_HANDLE HANDLE_ID_INCREMENT = 2;
 
 static struct _PROCESS_HANDLE_LIST m_processHandleList;
 static struct _FILE_HANDLE_LIST m_fileHandleList;
@@ -288,6 +288,33 @@ SyscallProcessCreate(
         }
     }
 
+    if (MmuIsBufferValid((char*)ProcessPath, sizeof(char) * PathLength, PAGE_RIGHTS_READ, GetCurrentProcess()) != STATUS_SUCCESS) {
+        return STATUS_UNSUCCESSFUL;
+    }
+
+    if (MmuIsBufferValid((UM_HANDLE*)ProcessHandle, sizeof(UM_HANDLE), PAGE_RIGHTS_READWRITE, GetCurrentProcess()) != STATUS_SUCCESS) {
+        return STATUS_UNSUCCESSFUL;
+    }
+
+    if (ArgLength != 0) {
+        if (Arguments == NULL) {
+            return STATUS_UNSUCCESSFUL;
+        }
+
+        if (MmuIsBufferValid((char*)Arguments, sizeof(char) * ArgLength, PAGE_RIGHTS_READ, GetCurrentProcess()) != STATUS_SUCCESS) {
+            return STATUS_UNSUCCESSFUL;
+        }
+
+        if (cl_strlen(Arguments) + 1 != ArgLength) {
+            return STATUS_UNSUCCESSFUL;
+        }
+
+    }
+
+    if (cl_strlen(ProcessPath) + 1 != PathLength) {
+        return STATUS_UNSUCCESSFUL;
+    }
+
     SystemDrive = IomuGetSystemPartitionPath();
 
     strcpy(absolutePath, SystemDrive);
@@ -316,6 +343,7 @@ SyscallProcessCreate(
         *ProcessHandle = processHandle->Handle;
     }
 
+    //LOG_WARNING("syscall process create: SUCCESS, id: %d\n", processHandle->Handle);
     return STATUS_SUCCESS;
 }
 
@@ -358,17 +386,25 @@ SyscallProcessWaitForTermination(
     OUT     STATUS* TerminationStatus
 )
 {
+    if (TerminationStatus == NULL) {
+        return STATUS_UNSUCCESSFUL;
+    }
+
+    if (MmuIsBufferValid((STATUS*)TerminationStatus, sizeof(STATUS), PAGE_RIGHTS_WRITE, GetCurrentProcess()) != STATUS_SUCCESS) {
+        return STATUS_UNSUCCESSFUL;
+    }
+
     PPROCESS pProcess;
     STATUS Status;
 
     Status = FindProcessByUM_HANDLE(ProcessHandle, &pProcess);
 
-    if (Status != STATUS_SUCCESS) {
+    if (Status != STATUS_SUCCESS || pProcess == NULL) {
 
         return Status;
     }
 
-    ProcessWaitForTermination(pProcess, TerminationStatus);
+    (pProcess, TerminationStatus);
 
     return Status;
 }
@@ -396,19 +432,36 @@ SyscallFileCreate(
     OUT         UM_HANDLE*              FileHandle
 )
 {
-    PFILE_OBJECT pFile;
-    STATUS Status;
-    const char* SystemDrive;
-    char absolutePath[MAX_PATH];
-
-    if (Path == NULL || FileHandle == NULL || PathLength <= 0) {
+    if (!SUCCEEDED(MmuIsBufferValid((PVOID)Path, PathLength, PAGE_RIGHTS_READ, GetCurrentProcess())))
+    {
         return STATUS_UNSUCCESSFUL;
     }
 
-    SystemDrive = IomuGetSystemPartitionPath();
+    if (Path == NULL || FileHandle == NULL || PathLength <= 1) {
+        return STATUS_UNSUCCESSFUL;
+    }
 
-    strcpy(absolutePath, SystemDrive);
-    sprintf(absolutePath, "%s\\%s", absolutePath, Path);
+    PFILE_OBJECT pFile;
+    STATUS Status;
+    //const char* SystemDrive;
+    char absolutePath[MAX_PATH];
+
+
+    if (Path == strrchr(Path, '\\')) {
+        sprintf(absolutePath, "C:\\%s", Path);
+    }
+    else {
+        strcpy(absolutePath, Path);
+    }
+
+    //LOGP_ERROR("absolutePath0: %s\n", absolutePath);
+
+    //SystemDrive = IomuGetSystemPartitionPath();
+    //LOGP_ERROR("System drive: %s\n", SystemDrive);
+    //strcpy(absolutePath, SystemDrive);
+    //LOGP_ERROR("absolutePath: %s\n", absolutePath);
+    //sprintf(absolutePath, "%sApplications\\%s", absolutePath, Path);
+    //LOGP_ERROR("absolutePath2: %s\n", absolutePath);
 
     Status = IoCreateFile(&pFile, absolutePath, Directory, Create, FALSE);
 
@@ -419,7 +472,6 @@ SyscallFileCreate(
     PFILE_HANDLE fileHandle = (PFILE_HANDLE)ExAllocatePoolWithTag(PoolAllocateZeroMemory, sizeof(FILE_HANDLE), TAG_CREATE_FILE, PAGE_SIZE);
 
     if (fileHandle == NULL) {
-        LOG_ERROR("File Create - ExAllocatePoolWithTag");
         return STATUS_UNSUCCESSFUL;
     }
     else {
@@ -446,8 +498,11 @@ SyscallFileClose(
         return STATUS_UNSUCCESSFUL;
     }
 
-    STATUS Status;
+    if (FileHandle == UM_FILE_HANDLE_STDOUT) {
+        return STATUS_SUCCESS;
+    }
 
+    STATUS Status;
     Status = CloseAndDeleteFileByUM_HANDLE(FileHandle);
 
     return Status;
@@ -463,14 +518,27 @@ SyscallFileRead(
     OUT QWORD*                      BytesRead
 )
 {
-    PFILE_OBJECT pFile;
-    STATUS Status;
-    
+    if (FileHandle == UM_INVALID_HANDLE_VALUE ||
+        FileHandle == UM_FILE_HANDLE_STDOUT ||
+        FileHandle > 64 ||
+        FileHandle < 0)
+    {
+        return STATUS_INVALID_PARAMETER1;
+    }
+
     if (BytesToRead == 0) {
         *BytesRead = 0;
         return STATUS_SUCCESS;
     }
 
+    if (!SUCCEEDED(MmuIsBufferValid(Buffer, sizeof(Buffer), PAGE_RIGHTS_READ, GetCurrentProcess())))
+    {
+        return STATUS_UNSUCCESSFUL;
+    }
+
+    PFILE_OBJECT pFile;
+    STATUS Status;
+    
     Status = FindFileByUM_HANDLE(FileHandle, &pFile);
 
     if (Status != STATUS_SUCCESS) {
@@ -491,7 +559,7 @@ SyscallFileWrite(
     IN  QWORD                       BytesToWrite,
     OUT QWORD*                      BytesWritten
 )
-{
+{   
 
     if (BytesToWrite == 0) {
         *BytesWritten = 0;
@@ -799,7 +867,6 @@ CloseAndDeleteFileByUM_HANDLE(
     PLIST_ENTRY pListEntry; // i
     PFILE_HANDLE pFileForIterator;
     STATUS Status;
-
     ListIteratorInit(&m_fileHandleList.FileHandleListHead, &ListIterator);
 
     while ((pListEntry = ListIteratorNext(&ListIterator)) != NULL) {
