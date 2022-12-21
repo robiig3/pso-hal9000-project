@@ -18,7 +18,7 @@ extern void SyscallEntry();
 
 #define SYSCALL_IF_VERSION_KM       SYSCALL_IMPLEMENTED_IF_VERSION
 #define TAG_CREATE_PROCESS 'PCT'
-#define TAG_CREATE_THREAD 'TCR'
+#define TAG_CREATE_THREAD 'RCT'
 #define TAG_CREATE_FILE 'FCR'
 
 UM_HANDLE HANDLE_ID_INCREMENT = 2;
@@ -161,7 +161,7 @@ SyscallPreinitSystem(
     // initializam listele de ProcessHandle, FileHandle si ThreadHandle
     InitializeListHead(&m_processHandleList.ProcessHandleListHead);
     InitializeListHead(&m_fileHandleList.FileHandleListHead);
-    InitializeListHead(&m_threadHandleList.ThreadHandleList);
+    InitializeListHead(&m_threadHandleList.ThreadHandleListHead);
 }
 
 STATUS
@@ -343,7 +343,6 @@ SyscallProcessCreate(
         *ProcessHandle = processHandle->Handle;
     }
 
-    //LOG_WARNING("syscall process create: SUCCESS, id: %d\n", processHandle->Handle);
     return STATUS_SUCCESS;
 }
 
@@ -593,36 +592,31 @@ SyscallThreadCreate(
     OUT     UM_HANDLE* ThreadHandle
 )
 {
-    //UNREFERENCED_PARAMETER(StartFunction);
-    //UNREFERENCED_PARAMETER(Context);
-    //UNREFERENCED_PARAMETER(ThreadHandle);
-    
-    struct _THREAD* pThread;
+    PTHREAD pThread;
     PPROCESS pProcess;
     STATUS Status;
 
     if (StartFunction == NULL) {
-        return STATUS_UNSUCCESSFUL;
+        return STATUS_INVALID_PARAMETER1;
     }
-    if (ThreadHandle == UM_INVALID_HANDLE_VALUE) {
-        return STATUS_UNSUCCESSFUL;
+
+    if (ThreadHandle == NULL) {
+        return STATUS_INVALID_PARAMETER3;
     }
 
     pProcess = GetCurrentProcess();
 
-    if (MmuIsBufferValid((PVOID)StartFunction, sizeof(PFUNC_ThreadStart), PAGE_RIGHTS_ALL, pProcess) != STATUS_SUCCESS) {
-        return STATUS_UNSUCCESSFUL;
-    }
-    
-    Status = ThreadCreateEx("Thread from syscall create thread", ThreadPriorityDefault, StartFunction, Context, &pThread, pProcess);
+    if (MmuIsBufferValid((PVOID)StartFunction, sizeof(PFUNC_ThreadStart), PAGE_RIGHTS_ALL, GetCurrentProcess()) != STATUS_SUCCESS) { return STATUS_UNSUCCESSFUL; }
 
+    if (MmuIsBufferValid((UM_HANDLE*)ThreadHandle, sizeof(UM_HANDLE), PAGE_RIGHTS_WRITE, GetCurrentProcess()) != STATUS_SUCCESS) { return STATUS_UNSUCCESSFUL; }
+    
+    Status = ThreadCreateEx("new thread created", 16, (PFUNC_ThreadStart)StartFunction, Context, &pThread, pProcess);
+    
     if (Status != STATUS_SUCCESS) {
         return STATUS_UNSUCCESSFUL;
     }
 
-    //PTHREAD_HANDLE threadHandle = (PTHREAD_HANDLE)malloc(1 * sizeof(THREAD_HANDLE));
     PTHREAD_HANDLE threadHandle = (PTHREAD_HANDLE)ExAllocatePoolWithTag(PoolAllocateZeroMemory, sizeof(THREAD_HANDLE), TAG_CREATE_THREAD, PAGE_SIZE); // 0 or pagesize
-
 
     if (threadHandle == NULL) {
         LOG_ERROR("ExAllocatePoolWithTag");
@@ -634,7 +628,7 @@ SyscallThreadCreate(
         HANDLE_ID_INCREMENT += 1;
 
         InsertTailList(
-            &m_threadHandleList.ThreadHandleList,
+            &m_threadHandleList.ThreadHandleListHead,
             &threadHandle->ThreadHandleList);
         *ThreadHandle = threadHandle->Handle;
     }
@@ -714,7 +708,7 @@ FindThreadByUM_HANDLE(
     BOOLEAN Found = FALSE;
     PTHREAD_HANDLE pThreadForIterator;
 
-    ListIteratorInit(&m_threadHandleList.ThreadHandleList, &ListIterator);
+    ListIteratorInit(&m_threadHandleList.ThreadHandleListHead, &ListIterator);
 
     while ((pListEntry = ListIteratorNext(&ListIterator)) != NULL) {
 
@@ -744,7 +738,7 @@ CloseAndDeleteThreadByUM_HANDLE(
     BOOLEAN Found = FALSE;
     PTHREAD_HANDLE pThreadForIterator;
 
-    ListIteratorInit(&m_threadHandleList.ThreadHandleList, &ListIterator);
+    ListIteratorInit(&m_threadHandleList.ThreadHandleListHead, &ListIterator);
 
     while ((pListEntry = ListIteratorNext(&ListIterator)) != NULL) {
 

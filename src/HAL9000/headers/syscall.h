@@ -51,7 +51,7 @@ typedef struct _THREAD_HANDLE {
 
 struct _THREAD_HANDLE_LIST {
 
-    LIST_ENTRY ThreadHandleList;
+    LIST_ENTRY ThreadHandleListHead;
 
 };
 
