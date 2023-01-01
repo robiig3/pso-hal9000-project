@@ -134,7 +134,7 @@ SyscallHandler(
             status = SyscallThreadWaitForTermination((UM_HANDLE)pSyscallParameters[0], (STATUS*)pSyscallParameters[1]);
             break;
         case SyscallIdThreadCloseHandle:
-            status = SyscallThreadCloseHandle((UM_HANDLE)pSyscallParameters);
+            status = SyscallThreadCloseHandle((UM_HANDLE)pSyscallParameters[0]);
             break;
         default:
             LOG_ERROR("Unimplemented syscall called from User-space!\n");
@@ -403,7 +403,7 @@ SyscallProcessWaitForTermination(
         return Status;
     }
 
-    (pProcess, TerminationStatus);
+    ProcessWaitForTermination(pProcess, TerminationStatus);
 
     return Status;
 }
@@ -605,8 +605,6 @@ SyscallThreadCreate(
     }
 
     pProcess = GetCurrentProcess();
-
-    if (MmuIsBufferValid((PVOID)StartFunction, sizeof(PFUNC_ThreadStart), PAGE_RIGHTS_ALL, GetCurrentProcess()) != STATUS_SUCCESS) { return STATUS_UNSUCCESSFUL; }
 
     if (MmuIsBufferValid((UM_HANDLE*)ThreadHandle, sizeof(UM_HANDLE), PAGE_RIGHTS_WRITE, GetCurrentProcess()) != STATUS_SUCCESS) { return STATUS_UNSUCCESSFUL; }
     

@@ -150,6 +150,12 @@ _IsrExceptionHandler(
         DWORD noOfStackElementsToDump;
         PPCPU pCpu;
 
+        // acolesa - trebuie terminat un proces care genereaza o exceptie
+        if (!GdtIsSegmentPrivileged((WORD)StackPointer->Registers.CS))
+        {
+            ProcessTerminate(NULL);
+        }
+
         LOG_ERROR("Could not handle exception 0x%x [%s]\n", InterruptIndex, EXCEPTION_NAME[InterruptIndex]);
 
         DumpInterruptStack(StackPointer, ErrorCodeAvailable );
