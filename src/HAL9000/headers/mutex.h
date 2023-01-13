@@ -60,3 +60,31 @@ void
 MutexRelease(
     INOUT       PMUTEX      Mutex
     );
+
+// SEMAPHORES
+typedef struct _SEMAPHORE
+{
+    LOCK                MutexLock;
+    
+    DWORD               Value;
+
+    LIST_ENTRY          HOLDERS;
+} SEMAPHORE, * PSEMAPHORE;
+
+void
+SemaphoreInit(
+    OUT     PSEMAPHORE      Semaphore,
+    IN      DWORD           InitialValue
+);
+
+void
+SemaphoreDown(
+    INOUT   PSEMAPHORE      Semaphore,
+    IN      DWORD           Value
+);
+
+void
+SemaphoreUp(
+    INOUT   PSEMAPHORE      Semaphore,
+    IN      DWORD           Value
+);

@@ -9,10 +9,13 @@
 #include "isr.h"
 #include "gdtmu.h"
 #include "pe_exports.h"
+#include "cmd_thread_helper.h"
 
 #define TID_INCREMENT               4
 
 #define THREAD_TIME_SLICE           1
+
+INT64 Tid = 0;
 
 extern void ThreadStart();
 
@@ -36,6 +39,8 @@ typedef struct _THREAD_SYSTEM_DATA
 
     _Guarded_by_(ReadyThreadsLock)
     LIST_ENTRY          ReadyThreadsList;
+
+    INT64               TotalNumberOfThreads;
 } THREAD_SYSTEM_DATA, *PTHREAD_SYSTEM_DATA;
 
 static THREAD_SYSTEM_DATA m_threadSystemData;
@@ -145,6 +150,8 @@ ThreadSystemPreinit(
 
     InitializeListHead(&m_threadSystemData.ReadyThreadsList);
     LockInit(&m_threadSystemData.ReadyThreadsLock);
+
+    m_threadSystemData.TotalNumberOfThreads = 0;
 }
 
 STATUS
@@ -256,7 +263,13 @@ ThreadSystemInitIdleForCurrentCPU(
     LOG_TRACE_THREAD("Received idle thread signal\n");
 
     LOG_FUNC_END_THREAD;
-
+    
+    if (SUCCEEDED(status)) {
+        m_threadSystemData.TotalNumberOfThreads += 1;
+        //CmdListThreads(1, m_threadSystemData.TotalNumberOfThreads);
+        LOGL("Total number of threads in the system: %d.\n", m_threadSystemData.TotalNumberOfThreads);
+    }
+    
     return status;
 }
 
@@ -415,6 +428,10 @@ ThreadCreateEx(
 
     *Thread = pThread;
 
+    if (SUCCEEDED(status)) {
+        LOGL("Thread %s with tid %d has been created.\n", pThread->Name, pThread->Id);
+    }
+
     return status;
 }
 
@@ -562,10 +579,12 @@ ThreadExit(
     pThread->ExitStatus = ExitStatus;
     ExEventSignal(&pThread->TerminationEvt);
 
+    LOGL("Thread %s with tid %d has finished.\n", pThread->Name, pThread->Id);
+
     ProcessNotifyThreadTermination(pThread);
 
     LockAcquire(&m_threadSystemData.ReadyThreadsLock, &oldState);
-    _ThreadSchedule();
+    _ThreadSchedule();    
     NOT_REACHED;
 }
 
@@ -790,7 +809,10 @@ _ThreadInit(
 
         strcpy(pThread->Name, Name);
 
-        pThread->Id = _ThreadSystemGetNextTid();
+        //pThread->Id = _ThreadSystemGetNextTid();
+        pThread->Id = Tid;
+        Tid += 10;
+        LOG("Incrementing TID %d\n", pThread->Id);
         pThread->State = ThreadStateBlocked;
         pThread->Priority = Priority;
 
