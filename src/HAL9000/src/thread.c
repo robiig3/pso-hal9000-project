@@ -10,12 +10,16 @@
 #include "gdtmu.h"
 #include "pe_exports.h"
 #include "cmd_thread_helper.h"
+#include "iomu.h"
 
 #define TID_INCREMENT               4
 
 #define THREAD_TIME_SLICE           1
 
 INT64 Tid = 0;
+
+static struct _GLOBAL_THREAD_LIST m_globalThreadList;
+static FUNC_CompareFunction _ThreadCompareFunction;
 
 extern void ThreadStart();
 
@@ -150,6 +154,9 @@ ThreadSystemPreinit(
 
     InitializeListHead(&m_threadSystemData.ReadyThreadsList);
     LockInit(&m_threadSystemData.ReadyThreadsLock);
+
+    InitializeListHead(&m_globalThreadList.ThreadListHead);
+    LockInit(&m_globalThreadList.ThreadListLock);
 
     m_threadSystemData.TotalNumberOfThreads = 0;
 }
@@ -426,11 +433,22 @@ ThreadCreateEx(
         ThreadUnblock(pThread);
     }
 
+    pThread->CreateTime = IomuGetSystemTimeUs();
     *Thread = pThread;
 
     if (SUCCEEDED(status)) {
         LOGL("Thread %s with tid %d has been created.\n", pThread->Name, pThread->Id);
     }
+
+    INTR_STATE oldState;
+    LockAcquire(&m_globalThreadList.ThreadListLock, &oldState);
+    InsertOrderedList(
+        &m_globalThreadList.ThreadListHead,
+        &pThread->GlobalThreadsListEntry,
+        &_ThreadCompareThreads,
+        NULL
+    );
+    LockRelease(&m_globalThreadList.ThreadListLock, oldState);
 
     return status;
 }
@@ -1260,4 +1278,14 @@ _ThreadKernelFunction(
 
     ThreadExit(exitStatus);
     NOT_REACHED;
+}
+
+static
+INT64
+(__cdecl _ThreadCompareThreads)(
+    IN  PTHREAD         Thread1,
+    IN  PTHREAD         Thread2
+)
+{
+    return Thread1->CreateTime - Thread2->CreateTime;
 }

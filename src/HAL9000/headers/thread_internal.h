@@ -92,7 +92,20 @@ typedef struct _THREAD
     struct _PROCESS*        Process;
 
     TID                     ParentId;
+
+    QWORD                   CreateTime;
+
+    LIST_ENTRY              GlobalThreadsListEntry;
 } THREAD, *PTHREAD;
+
+struct _GLOBAL_THREAD_LIST
+{
+    // protect the global timer list
+    LOCK                ThreadListLock;
+
+    // the list's head
+    LIST_ENTRY          ThreadListHead;
+};
 
 //******************************************************************************
 // Function:     ThreadSystemPreinit
@@ -284,3 +297,9 @@ void
 ThreadSetPriority(
     IN      THREAD_PRIORITY     NewPriority
     );
+
+//INT64
+//_ThreadCompareThreads(
+//    IN  PTHREAD         Thread1,
+//    IN  PTHREAD         Thread2
+//);
