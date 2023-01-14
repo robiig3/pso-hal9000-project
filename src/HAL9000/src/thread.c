@@ -445,10 +445,12 @@ ThreadCreateEx(
     InsertOrderedList(
         &m_globalThreadList.ThreadListHead,
         &pThread->GlobalThreadsListEntry,
-        &_ThreadCompareThreads,
+        &_ThreadCompareFunction,
         NULL
     );
     LockRelease(&m_globalThreadList.ThreadListLock, oldState);
+
+    LOGL("Global Thread List Size: %d.\n", ListSize(&m_globalThreadList.ThreadListHead));
 
     return status;
 }
@@ -1231,6 +1233,10 @@ _ThreadDestroy(
     RemoveEntryList(&pThread->AllList);
     LockRelease(&m_threadSystemData.AllThreadsLock, oldState);
 
+    LockAcquire(&m_globalThreadList.ThreadListLock, &oldState);
+    RemoveEntryList(&pThread->GlobalThreadsListEntry);
+    LockRelease(&m_globalThreadList.ThreadListLock, oldState);
+
     // This must be done before removing the thread from the process list, else
     // this may be the last thread and the process VAS will be freed by the time
     // ProcessRemoveThreadFromList - this function also dereferences the process
@@ -1282,10 +1288,17 @@ _ThreadKernelFunction(
 
 static
 INT64
-(__cdecl _ThreadCompareThreads)(
-    IN  PTHREAD         Thread1,
-    IN  PTHREAD         Thread2
+(__cdecl _ThreadCompareFunction)(
+    IN  PLIST_ENTRY         Thread1,
+    IN  PLIST_ENTRY         Thread2,
+    IN_OPT  PVOID context
 )
 {
-    return Thread1->CreateTime - Thread2->CreateTime;
+
+    PTHREAD pth1, pth2;
+    pth1 = CONTAINING_RECORD(Thread1, THREAD, GlobalThreadsListEntry);
+    pth2 = CONTAINING_RECORD(Thread2, THREAD, GlobalThreadsListEntry);
+
+    UNREFERENCED_PARAMETER(context);
+    return pth1->CreateTime - pth2->CreateTime;
 }

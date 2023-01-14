@@ -298,8 +298,10 @@ ThreadSetPriority(
     IN      THREAD_PRIORITY     NewPriority
     );
 
-//INT64
-//_ThreadCompareThreads(
-//    IN  PTHREAD         Thread1,
-//    IN  PTHREAD         Thread2
-//);
+static
+INT64
+(__cdecl _ThreadCompareFunction)(
+    IN  PLIST_ENTRY         Thread1,
+    IN  PLIST_ENTRY         Thread2,
+    IN_OPT  PVOID context
+);
