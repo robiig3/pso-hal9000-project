@@ -279,13 +279,13 @@ ThreadCreate(
 
 STATUS
 ThreadCreateEx(
-    IN_Z        char*               Name,
+    IN_Z        char* Name,
     IN          THREAD_PRIORITY     Priority,
     IN          PFUNC_ThreadStart   Function,
     IN_OPT      PVOID               Context,
-    OUT_PTR     PTHREAD*            Thread,
-    INOUT       struct _PROCESS*    Process
-    )
+    OUT_PTR     PTHREAD* Thread,
+    INOUT       struct _PROCESS* Process
+)
 {
     STATUS status;
     PTHREAD pThread;
@@ -341,9 +341,9 @@ ThreadCreateEx(
     {
         // Create user-mode stack
         pThread->UserStack = MmuAllocStack(STACK_DEFAULT_SIZE,
-                                           TRUE,
-                                           FALSE,
-                                           Process);
+            TRUE,
+            FALSE,
+            Process);
         if (pThread->UserStack == NULL)
         {
             status = STATUS_MEMORY_CANNOT_BE_COMMITED;
@@ -361,8 +361,8 @@ ThreadCreateEx(
             ASSERT(Process->NumberOfThreads == 1);
 
             status = _ThreadSetupMainThreadUserStack(pThread->UserStack,
-                                                     &pThread->UserStack,
-                                                     Process);
+                &pThread->UserStack,
+                Process);
             if (!SUCCEEDED(status))
             {
                 LOG_FUNC_ERROR("_ThreadSetupUserStack", status);
@@ -371,12 +371,12 @@ ThreadCreateEx(
         }
         else
         {
-            pThread->UserStack = (PVOID) PtrDiff(pThread->UserStack, SHADOW_STACK_SIZE + sizeof(PVOID));
+            pThread->UserStack = (PVOID)PtrDiff(pThread->UserStack, SHADOW_STACK_SIZE + sizeof(PVOID));
         }
 
-        pStartFunction = (PVOID) (bProcessIniialThread ? Process->HeaderInfo->Preferred.AddressOfEntryPoint : Function);
-        firstArg       = (QWORD) (bProcessIniialThread ? Process->NumberOfArguments : (QWORD) Context);
-        secondArg      = (QWORD) (bProcessIniialThread ? PtrOffset(pThread->UserStack, SHADOW_STACK_SIZE + sizeof(PVOID)) : 0);
+        pStartFunction = (PVOID)(bProcessIniialThread ? Process->HeaderInfo->Preferred.AddressOfEntryPoint : Function);
+        firstArg = (QWORD)(bProcessIniialThread ? Process->NumberOfArguments : (QWORD)Context);
+        secondArg = (QWORD)(bProcessIniialThread ? PtrOffset(pThread->UserStack, SHADOW_STACK_SIZE + sizeof(PVOID)) : 0);
     }
     else
     {
@@ -386,15 +386,15 @@ ThreadCreateEx(
 #pragma warning(suppress:4152)
         pStartFunction = _ThreadKernelFunction;
 
-        firstArg =  (QWORD) Function;
-        secondArg = (QWORD) Context;
+        firstArg = (QWORD)Function;
+        secondArg = (QWORD)Context;
     }
 
     status = _ThreadSetupInitialState(pThread,
-                                      pStartFunction,
-                                      firstArg,
-                                      secondArg,
-                                      Process->PagingData->Data.KernelSpace);
+        pStartFunction,
+        firstArg,
+        secondArg,
+        Process->PagingData->Data.KernelSpace);
     if (!SUCCEEDED(status))
     {
         LOG_FUNC_ERROR("_ThreadSetupInitialState", status);
@@ -417,7 +417,6 @@ ThreadCreateEx(
 
     return status;
 }
-
 void
 ThreadTick(
     void
@@ -650,7 +649,11 @@ ThreadGetPriority(
 {
     PTHREAD pThread = (NULL != Thread) ? Thread : GetCurrentThread();
 
-    return (NULL != pThread) ? pThread->Priority : 0;
+    if (pThread->RealPriority <= pThread->Priority) {
+        return (NULL != pThread) ? pThread->Priority : 0;
+    }
+
+    return pThread->RealPriority;
 }
 
 void
@@ -660,7 +663,13 @@ ThreadSetPriority(
 {
     ASSERT(ThreadPriorityLowest <= NewPriority && NewPriority <= ThreadPriorityMaximum);
 
-    GetCurrentThread()->Priority = NewPriority;
+    if (GetCurrentThread()->Priority < NewPriority) {
+        GetCurrentThread()->RealPriority = NewPriority;
+    }
+    else {
+        GetCurrentThread()->Priority = NewPriority;
+        GetCurrentThread()->RealPriority = NewPriority;
+    }
 }
 
 STATUS
@@ -942,15 +951,270 @@ static
 STATUS
 _ThreadSetupMainThreadUserStack(
     IN      PVOID               InitialStack,
-    OUT     PVOID*              ResultingStack,
+    OUT     PVOID* ResultingStack,
     IN      PPROCESS            Process
-    )
+)
 {
+
     ASSERT(InitialStack != NULL);
     ASSERT(ResultingStack != NULL);
     ASSERT(Process != NULL);
 
-    *ResultingStack = InitialStack;
+    // IMPORTANT NOTE 
+    //  am adus si modificari in plus INAFARA de ce mi-ati spus sa modific in cod la ora de proiect
+    //aceste modificari sunt:
+    //inainte valoare ce puneam in stiva acolo unde stocam adrese era de tip QWORD. Acuma am modificat ca sa respect
+    //ceea ce este scris in documentatie asa ca unele valori(adrese stocate) sunt acuma ori (void*) ori (char*)
+
+    //apare totusi o PROBLEMA ce sunt sigur de ea, eu daca vreau sa imi introduc in stiva in loc de un PQWORD cu o adresa
+    //dummy, un PVOID, tre sa imi creez o variabila si sa ii dau adresa variabilei respective. Nu imi dau seama cat de ok
+    //este asta
+
+    //am adus schimbari la bitii de aligment inainte ii lasam liberi si doar incrementam stiva si nu aveau nicio valoare. 
+    //acuma pun valoarea 0 la fiecare byte in parte cu care incrementez stiva
+
+    //am mutat totul pe QWORD, nu mai folosesc deloc BYTE(inafara de aligment bytes) ca sa nu ma incurc
+
+    //ca sa fiu sigur ca nu ii problema de acolo, nu mai folosesc nici functia Ptrdiff, am ales sa scad adresele la fel cum
+    //fac si la adunarea offsetului
+
+    LOG("Initial stack : 0x%x\n", InitialStack);
+    LOG("avion\n");
+
+    // acolesa - aliniamentul nu se poate calcula aici - e depenendet nu doar de lungimea cuvintelor din linia de comanda, 
+    // acolesa - ci si de numarul lor si de alti parametri care vor mai fi pusi pe stiva
+    // acolesa - adresa unde va fi pusa adresa de return din fc _start, aceea trebuie sa fie multiple de 8, dar nu de 16 (0x10) 
+    int aligment; //= strlen(Process->FullCommandLine) % 16;
+    //const int al; //= 16 - aligment;
+    // acolesa - nu cred ca ai calculat bine ce vine pe stiva - SHADOW_STACK_SIZE e 0x20 adica 32 = 4 * 8, 
+    //           deci cuprinde atat cele 2 valori dummy3 si dummy4, cat si argv si argc
+    //QWORD stSize = strlen(Process->FullCommandLine) + Process->NumberOfArguments * sizeof(char*) + sizeof(char**) +
+    //    SHADOW_STACK_SIZE + sizeof(QWORD) + sizeof(PVOID) + al;
+    // acolesa - strlen(Process->FullCommandLine) e OK, doar daca nu ai mai multe spatii intre cuvinte, ci doar cate unul singur
+    // acolesa - ceea ce cred ca se intampla, din fericire, in testele actuale
+    QWORD stSize = strlen(Process->FullCommandLine) + Process->NumberOfArguments * sizeof(char*) +
+        SHADOW_STACK_SIZE + sizeof(PVOID);
+
+    // acolesa - align to 8 (could be 16, also)
+    aligment = stSize % 8 == 0 ? 0 : (8 - stSize % 8);
+    stSize += aligment;
+    // align to 8, but not 16
+    aligment = stSize % 16 == 0 ? 8 : 0;
+    stSize += aligment;
+
+    PVOID stBuffer = NULL;
+
+    // acolesa - nu as fi dat acum valoare lui ResultingStack - se putea stabili la sfarsit - mai vedem exact cum e atunci
+    //*ResultingStack = (PQWORD)InitialStack - stSize;    
+    *ResultingStack = (PVOID)PtrDiff(InitialStack, stSize);
+    LOG("resulting stack : 0x%x\n", *ResultingStack);
+
+    // acolesa - pentru ca in fc MmuGetSystemVirtualAddressForUserBuffer se face niste alinieri la adresa pagini, 
+    // as merge pe valori sigure, pe care le controlez aici - as mapa toata memoria rezervata stivei
+    //MmuGetSystemVirtualAddressForUserBuffer(*ResultingStack, stSize, PAGE_RIGHTS_ALL, Process, &stBuffer);
+    STATUS status = MmuGetSystemVirtualAddressForUserBuffer((PVOID)PtrDiff(InitialStack, STACK_DEFAULT_SIZE), STACK_DEFAULT_SIZE, PAGE_RIGHTS_ALL, Process, &stBuffer);
+    if (!SUCCEEDED(status)) {
+        return STATUS_INSUFFICIENT_MEMORY;
+    }
+
+    //LOG("resulting stack1 : 0x%x\n", ResultingStack);
+
+    //adaug dummy return address
+    QWORD offset = 0;
+
+    // acolesa - salvez valoarea unde e mapata stiva
+    PVOID stBufferSaved = stBuffer;
+
+    // acolesa - stBuffer trebuie adus la baza stivei, adica la adresele mari - acum, dupa mapare, e la adrese mici
+    //stBuffer = (PQWORD)stBuffer;
+    stBuffer = PtrOffset(stBuffer, STACK_DEFAULT_SIZE);
+
+    // acolesa - ca sa revin unde ai vrut tu sa fie stBuffer
+    // acolesa - poate mergea si sa las cum ai pus tu in fc de mapare, dar asa sunt mai sigur unde e stBuffer
+    stBuffer = (PVOID)PtrDiff(stBuffer, stSize);
+
+    // acolesa - fake return address
+    QWORD i1 = 0xDEADC0D0;
+    // acolesa - nu cred ca ai inteles ce trebuie facut - pus pe stiva, adica la adresa unde indinva stBuffer, si NU schimbat (aiurea) adresa unde indica stBuffer
+    //(PVOID)stBuffer = &i1;
+    *(PQWORD)stBuffer = i1; // acolesa - asa e corect
+
+    // acolesa = eu cred ca vrei sa vezi ce e pe stiva la adresa unde indica stBuffer, nu valoare acelei adrese
+    //LOG("buffer stack : 0x%x\n", stBuffer); 
+    LOG("buffer stack : 0x%x\n", *(PQWORD)stBuffer);
+
+    // acolesa - skip fake ret addresss
+    offset = offset + sizeof(PVOID);
+
+    //adaug in stiva argc
+    // acolesa - daca faci asa, o dai rau in bara datorita aritmetici cu pointeri
+    // acolesa - ce ai scris tu se traduce prin stBuffer += (offset * sizeof(QWORD)) - trebuia facut cast la PBYTE
+    // acolesa - dar asta face fc PtrOffset si voi folosi acea functie
+    // acolesa - in plus, vad ca tot incrementezi acel offset, dar si actualizezi stBuffer, deci ai o incrementare dubla 
+    // acolesa - voi renunta la offset in modificarea lui stBuffer
+    //stBuffer = (PQWORD)stBuffer + offset; 
+    stBuffer = PtrOffset(stBuffer, sizeof(PVOID));
+    *(PQWORD)stBuffer = Process->NumberOfArguments;
+    // acolesa - vrei sa vezi ce e pe stiva, probabil
+    //LOG("buffer stack1 : 0x%x\n", stBuffer);
+    LOG("buffer stack1 : 0x%x\n", *(PQWORD)stBuffer);
+
+    // acolesa - skip - argc, which is a QWORD
+    offset = offset + sizeof(QWORD);
+
+    //adaug in stiva argv
+    // acolesa - PtrOffset, to skip over argc
+    //stBuffer = (PQWORD)stBuffer + offset;
+    stBuffer = PtrOffset(stBuffer, sizeof(QWORD));
+    // acolesa - e o adresa, deci PVOID sau PQWORD e acelasi lucru ca char* sau char** sau char*** sau .... 
+    // acolesa - eu zic sa nu exageram - un pointer e un pointer, indiferenyt la ce pointeaza, tot pe 8 octeti e stocat
+    // acolesa - adunand offset la *ResultingStack nu e destul ca sa indici unde incepe argv, 
+    // acolesa - pentru ca trebuie sa mai sari si peste cei doi extra paramtri din shadow space
+    // *(char***)stBuffer = (char**)ResultingStack + offset;
+    *(PQWORD)stBuffer = (QWORD)PtrOffset(*ResultingStack, (offset + 2 * 8));
+    LOG("buffer stack2 : 0x%x\n", *(PQWORD)stBuffer);
+
+    // acolesa - skip argv
+    offset = offset + sizeof(PQWORD);
+
+    //primul element din shadow space (dummy 3rd argument)
+
+    // acolesa - skip address of argv
+    //stBuffer = (PQWORD)stBuffer + offset;
+    stBuffer = PtrOffset(stBuffer, sizeof(PQWORD));
+    QWORD i2 = 0xDEADBEEF;
+    // acolesa - of! of!, de cate ori o sa mai vad asa ceva?
+    //(PVOID)stBuffer = &i2;
+    *(PQWORD)stBuffer = i2;
+    LOG("buffer stack3 : 0x%x\n", *(PQWORD)stBuffer);
+
+    // acolesa - skip dummy3
+    offset = offset + sizeof(QWORD);
+
+    //al doilea  element din shadow space (dummy 4rd argument)
+    // acolesa - skip dummy3
+    //stBuffer = (PQWORD)stBuffer + offset;
+    stBuffer = PtrOffset(stBuffer, sizeof(QWORD));
+    QWORD i3 = 0xDEADBEEF;
+    // acolesa - modificat
+    //(PVOID)stBuffer = &i3;
+    *(PQWORD)stBuffer = i3;
+
+    LOG("buffer stack4 : 0x%x\n", *(PQWORD)stBuffer);
+
+    // acolesa - skip dummy 4
+    offset = offset + sizeof(QWORD);
+
+    // acolesa - cam incurci lucrurile 
+    // acolesa - in primul rand ca unde e acum offset, e unde trebuie sa revii, ca sa completezi adresele, deci ar trebui sa retii valoarea curenta a lui offset
+    // acolesa - in al doilea rand, ca numarul de '\0' din FullCommanndLine e cuprins in lungimea acelui sir, pentru ca peste spatiile care separa cuvintele, se vor pune '\0'
+    // acolesa - o sa comentez ce ai scris tu si o sa incerc sa merg corect, pe aceeasi idee
+
+    //las un spatiu liber pentru a pune ulterior adresele de la argv
+    // asa ca am sa stochez in offsetFals de fapt lungimea lui argv + bitii de aligment + elementul '/0' de la fiecare cuvant
+    //QWORD offsetFals = al + strlen(Process->FullCommandLine) + Process->NumberOfArguments;//number of argument este de fapt numarul
+    //de '/0' de la fiecare end of string
+    //offset - offsetFals - adunaInPlus = offsetul in care urmeaza sa pun ADRESELE de la argv.
+    QWORD adunaInPlus = 0;
+
+    // acolesa - salvez offsetul curent
+    //QWORD offsetForArgv = offset;
+    PVOID stBufferArgv = stBuffer;
+
+    //de aici incep partea in care stochez continutul lui argv
+    // acolesa - corectat, ca sa sar peste array-ul argv, care are Process->NumberOfArguments elmemente, de tip char* fiecare
+    //stBuffer = (PQWORD)stBuffer + offsetFals;
+    stBuffer = PtrOffset(stBuffer, sizeof(char*) * Process->NumberOfArguments);
+
+    // acolesa - skip over argv array, where elements of argv (i.e. the strings) will be stored
+    offset = offset + sizeof(char*) * Process->NumberOfArguments;
+
+    // acolesa - am vazut cum ai gandit, dar cred ca o sa incerc sa rezolv dintr-o singura trecere prin FullCommandLine
+
+    // acolesa - ca sa nu risc bug-uri in fc ta my_strtok, o sa o folosesc pe cea existenta
+    char* command = Process->FullCommandLine;
+    const char* pch;
+    char* context = NULL;
+    //pch = my_strtok(command, " ");
+    // acolesa
+    pch = strtok_s(command, " ", &context);
+    //argv[0]
+    //folosesc num ca sa stochez ofsset-ul pentru fiecare cuvant in parte
+
+    // acolesa - tin evidenta elementelor
+    QWORD i = 0;
+    PVOID stBufferCrtArgv;
+
+    while (pch != NULL)
+    {
+        stBufferCrtArgv = stBuffer;
+
+        // acolesa - corectat
+        //strcpy(*(char**)stBuffer, pch);
+        strcpy((char*)stBuffer, pch);
+        adunaInPlus = (QWORD)strlen(pch) + 1;
+
+        // acolesa - afisez ce e pe stiva si la ce adresa
+        LOG("buffer stackmem1 0x%0x: %s\n", (PVOID)PtrOffset(*ResultingStack, offset), stBuffer);
+
+        // acolesa - jumps where the address of current string must be stored in the argv array
+        stBuffer = PtrOffset(stBufferArgv, i * sizeof(char*));
+        *(char**)stBuffer = (PVOID)PtrOffset(*ResultingStack, offset); // the address relative to *ResultingStack, which is the address in new process' address space
+        i++;
+
+        // acolesa - revin cu stBuffer unde pun sirurile din argv
+        //stBuffer = (PQWORD)stBuffer + adunaInPlus;
+        stBuffer = PtrOffset(stBufferCrtArgv, adunaInPlus);
+        offset = offset + adunaInPlus;
+
+        // acolesa
+        pch = strtok_s(NULL, " ", &context);
+
+        //argv[i]
+        //pch = my_strtok(NULL, " ");        
+        //adunaInPlus = adunaInPlus + (QWORD)strlen(pch) + 1;
+        //stBuffer = (PQWORD)stBuffer + adunaInPlus;
+        //strcpy(*(char**)stBuffer, pch);
+        //LOG("buffer stackmem2 : 0x%x\n", stBuffer);
+    }
+    //stop, am pus argv in stiva acuma urmeaza sa pun adresele
+
+    //pentru asta tre sa scad din offset
+    // offset = offset - offsetFals - adunaInPlus;
+    //ok acuma am revenit unde eram initial, adica dupa shadow space.
+
+    // acolesa - cred ca inteleg logica ta, dar, nu va merge, cel putin cu strtok_s, pentru ca ea pune '\0' peste delimitatori si
+    // acolesa - la o a doua trecere ptin acelasi sir, nu mai functioneaza - din cate vad, cam la fel faci si tu, 
+    // acolesa - ar fi trebuit sa lucrezi pe o copie a lui FullCommandLine
+    //in continuare voi lua adresele ce le-am copiat mai sus si le voi pune in stiva
+    /*
+    char* command1 = Process->FullCommandLine;
+    char* pch1;
+    pch1 = my_strtok(command1, " ");
+    for (DWORD i = 0; i < Process->NumberOfArguments; i++) {
+        sprintf((char*)stBuffer, "%u", (PQWORD)stBuffer + offsetFals + strlen(pch1) + 1);
+        stBuffer = (PQWORD)stBuffer + sizeof(char*);
+        pch1 = my_strtok(NULL, " ");
+
+        LOG("argv adresses : 0x%x\n", stBuffer);
+    }
+
+    // acolesa - aliniamentul l-am facut la inceput, nu?
+    //aligment bytes
+    BYTE alb[16];
+    for (int i = 0; i < al; i++) {
+        alb[i] = 0;
+        *(PBYTE)stBuffer = alb[i];
+        offset = offset + sizeof(PBYTE);
+        LOG("aligment butes: 0x%x\n", stBuffer);
+    }
+    LOG("buffer stack offsetal : 0x%x\n", stBuffer);
+    //cea ce fac aici ii sa las liber bitii de aligment
+    */
+
+    // acolesa - demaparea trebuie facuta de la adresa mica adresa mica!!!!!
+    //MmuFreeSystemVirtualAddressForUserBuffer((PVOID)stBuffer);
+    MmuFreeSystemVirtualAddressForUserBuffer((PVOID)stBufferSaved);
 
     return STATUS_SUCCESS;
 }
@@ -1238,4 +1502,46 @@ _ThreadKernelFunction(
 
     ThreadExit(exitStatus);
     NOT_REACHED;
+}
+
+void ThreadDonatePriority(IN PTHREAD thr, IN PTHREAD trmut) {
+
+    PTHREAD crtTrmut = trmut;
+    while (crtTrmut != NULL) {
+
+        if (thr->Priority > crtTrmut->Priority)
+        {
+            crtTrmut->Priority = thr->Priority;
+        }
+
+        if (crtTrmut->WaitedMutex != NULL) {
+            crtTrmut = crtTrmut->WaitedMutex->Holder;
+        }
+        else {
+            crtTrmut = NULL;
+        }
+
+    }
+
+}
+
+void ThreadRecomputePriority(IN PTHREAD thr) {
+
+    THREAD_PRIORITY thrPriority = thr->RealPriority;
+
+    for (DWORD i = 0; i < ListSize(&thr->AcquiredMutexesList); i = i + 1) {
+        PLIST_ENTRY pmut = GetListElemByIndex(&thr->AcquiredMutexesList, i);
+        PMUTEX mut = CONTAINING_RECORD(pmut, MUTEX, AcquiredMutexListElem);
+
+        for (DWORD j = 0; j < ListSize(&mut->WaitingList); j = j + 1) {
+            PLIST_ENTRY ptr = GetListElemByIndex(&mut->WaitingList, j);
+            PTHREAD tr = CONTAINING_RECORD(ptr, THREAD, ReadyList);
+            if (tr->Priority > thrPriority) {
+                thrPriority = tr->Priority;
+            }
+        }
+    }
+
+    thr->Priority = thrPriority;
+
 }

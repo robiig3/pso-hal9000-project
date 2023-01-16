@@ -7,13 +7,15 @@ typedef struct _MUTEX
 {
     LOCK                MutexLock;
 
+    LIST_ENTRY AcquiredMutexListElem;
+
     BYTE                CurrentRecursivityDepth;
     BYTE                MaxRecursivityDepth;
 
     _Guarded_by_(MutexLock)
-    LIST_ENTRY          WaitingList;
-    struct _THREAD*     Holder;
-} MUTEX, *PMUTEX;
+        LIST_ENTRY          WaitingList;
+    struct _THREAD* Holder;
+} MUTEX, * PMUTEX;
 
 //******************************************************************************
 // Function:     MutexInit
@@ -30,7 +32,7 @@ void
 MutexInit(
     OUT         PMUTEX      Mutex,
     IN          BOOLEAN     Recursive
-    );
+);
 
 //******************************************************************************
 // Function:     MutexAcquire
@@ -44,7 +46,7 @@ REQUIRES_NOT_HELD_LOCK(*Mutex)
 void
 MutexAcquire(
     INOUT       PMUTEX      Mutex
-    );
+);
 
 //******************************************************************************
 // Function:     MutexRelease
@@ -59,4 +61,4 @@ REQUIRES_EXCL_LOCK(*Mutex)
 void
 MutexRelease(
     INOUT       PMUTEX      Mutex
-    );
+);

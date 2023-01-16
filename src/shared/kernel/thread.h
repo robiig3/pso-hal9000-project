@@ -119,3 +119,9 @@ THREAD_PRIORITY
 ThreadGetPriority(
     IN_OPT  PTHREAD             Thread
     );
+
+void 
+ThreadDonatePriority(IN PTHREAD thr, IN PTHREAD trmut);
+
+void 
+ThreadRecomputePriority(IN PTHREAD thr);
