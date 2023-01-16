@@ -4,6 +4,7 @@
 #include "ref_cnt.h"
 #include "ex_event.h"
 #include "thread.h"
+#include "mutex.h"
 
 typedef enum _THREAD_STATE
 {
@@ -90,6 +91,13 @@ typedef struct _THREAD
     PVOID                   UserStack;
 
     struct _PROCESS*        Process;
+
+    //modified for project
+    THREAD_PRIORITY RealPriority;
+    
+    LIST_ENTRY AcquiredMutexesList;
+    
+    PMUTEX WaitedMutex;
 } THREAD, *PTHREAD;
 
 //******************************************************************************
