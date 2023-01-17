@@ -91,7 +91,10 @@ typedef struct _THREAD
 
     struct _PROCESS*        Process;
 
-    TID                     ParentId;
+    //simulare
+    PTHREAD          ParentThread;
+
+    QWORD                   Descendents;
 
     QWORD                   CreateTime;
 

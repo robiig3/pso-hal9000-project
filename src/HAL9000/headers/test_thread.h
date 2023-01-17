@@ -60,3 +60,19 @@ void
 TestAllThreadFunctionalities(
     IN      DWORD                       NumberOfThreads
     );
+
+STATUS EmptyFunc(
+    IN_OPT PVOID context
+);
+
+STATUS Thread1Func(
+    IN_OPT PVOID Context
+);
+
+STATUS Thread2Func(
+    IN_OPT PVOID Context
+);
+
+STATUS Thread4Func(
+    IN_OPT PVOID Context
+);

@@ -828,13 +828,31 @@ _ThreadInit(
         }
 
         strcpy(pThread->Name, Name);
-
+        
+        //simulare
         //pThread->Id = _ThreadSystemGetNextTid();
         pThread->Id = Tid;
         Tid += 10;
         LOG("Incrementing TID %d\n", pThread->Id);
         pThread->State = ThreadStateBlocked;
         pThread->Priority = Priority;
+        
+        pThread->Descendents = 0;
+
+        if (pThread->Id == 0) { //if is the root thread
+            pThread->ParentThread = NULL;
+        }
+        else {
+            pThread->ParentThread = GetCurrentThread();
+            PTHREAD threadIterator = pThread->ParentThread;
+            LOG("As a result of [tid = %d] creation: \n", pThread->Id);
+
+            while (threadIterator != NULL) {
+                threadIterator->Descendents++;
+                LOG("[tid = %d] now has %d descendents.\n", threadIterator->Id, threadIterator->Descendents);
+                threadIterator = threadIterator->ParentThread;
+            }
+        }
 
         LockInit(&pThread->BlockLock);
 
@@ -1237,6 +1255,14 @@ _ThreadDestroy(
     RemoveEntryList(&pThread->GlobalThreadsListEntry);
     LockRelease(&m_globalThreadList.ThreadListLock, oldState);
 
+    //simulare
+    PTHREAD threadIterator = pThread->ParentThread;
+
+    while (threadIterator != NULL) {
+        threadIterator->Descendents--;
+        threadIterator = threadIterator->ParentThread;
+    }    
+
     // This must be done before removing the thread from the process list, else
     // this may be the last thread and the process VAS will be freed by the time
     // ProcessRemoveThreadFromList - this function also dereferences the process
@@ -1286,6 +1312,7 @@ _ThreadKernelFunction(
     NOT_REACHED;
 }
 
+//simulare
 static
 INT64
 (__cdecl _ThreadCompareFunction)(
