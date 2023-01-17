@@ -1539,7 +1539,6 @@ _ThreadComparePriorityReadyList(
         }
     }
 }
-}
 
 void ThreadDonatePriority(IN PTHREAD thr, IN PTHREAD trmut) {
 
