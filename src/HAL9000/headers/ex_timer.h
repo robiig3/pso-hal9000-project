@@ -1,4 +1,5 @@
 #pragma once
+#include <ex_event.h>
 
 typedef enum _EX_TIMER_TYPE
 {
@@ -20,7 +21,24 @@ typedef struct _EX_TIMER
 
     volatile BOOLEAN    TimerStarted;
     BOOLEAN             TimerUninited;
-} EX_TIMER, *PEX_TIMER;
+
+    // keep track of threads waiting (blocked) for the timer
+    EX_EVENT            TimerEvent;
+
+    // used to place the timer in a global timer list
+    LIST_ENTRY          TimerListElem;
+} EX_TIMER, * PEX_TIMER;
+
+// global list keeping track of all tiers in the system and a lock to protect this lsit while accessed concurrently
+
+struct _GLOBAL_TIMER_LIST
+{
+    // protect the global timer list
+    LOCK                TimerListLock;
+
+    // the list's head
+    LIST_ENTRY          TimerListHead;
+};
 
 //******************************************************************************
 // Function:     ExTimerInit
@@ -50,7 +68,7 @@ ExTimerInit(
     OUT     PEX_TIMER       Timer,
     IN      EX_TIMER_TYPE   Type,
     IN      QWORD           TimeUs
-    );
+);
 
 //******************************************************************************
 // Function:     ExTimerStart
@@ -62,7 +80,7 @@ ExTimerInit(
 void
 ExTimerStart(
     IN      PEX_TIMER       Timer
-    );
+);
 
 //******************************************************************************
 // Function:     ExTimerStop
@@ -74,7 +92,7 @@ ExTimerStart(
 void
 ExTimerStop(
     IN      PEX_TIMER       Timer
-    );
+);
 
 //******************************************************************************
 // Function:     ExTimerWait
@@ -87,7 +105,7 @@ ExTimerStop(
 void
 ExTimerWait(
     INOUT   PEX_TIMER       Timer
-    );
+);
 
 //******************************************************************************
 // Function:     ExTimerUninit
@@ -100,7 +118,7 @@ ExTimerWait(
 void
 ExTimerUninit(
     INOUT   PEX_TIMER       Timer
-    );
+);
 
 //******************************************************************************
 // Function:     ExTimerCompareTimers
@@ -115,4 +133,44 @@ INT64
 ExTimerCompareTimers(
     IN      PEX_TIMER     FirstElem,
     IN      PEX_TIMER     SecondElem
-    );
+);
+
+//******************************************************************************
+// Function ADDED:      ExTimerSystemPreinit
+// Description:         Initialize the global timer list and its associated lock;
+// Returns:             void
+// Parameter:           void
+//******************************************************************************
+void
+ExTimerSystemPreinit(void);
+
+//******************************************************************************
+// Function ADDED:      ExTimerCompareListElems
+// Description:         Initialize the global timer list and its associated lock;
+// Returns:             PLIST_ENTRY
+// Parameter:           PLIST_ENTRY t1, PLIST_ENTRY t2, PVOID context
+//******************************************************************************
+INT64
+ExTimerCompareListElems(
+    IN      PLIST_ENTRY t1,
+    IN      PLIST_ENTRY t2,
+    IN_OPT  PVOID       context
+);
+
+//******************************************************************************
+// Function ADDED:      ExTimerCheck
+// Description:         called on each timer interrupt handling to check for a particular timer if it must be triggered or not;
+// Returns:             void
+// Parameter:           PEX_TIMER timer
+//******************************************************************************
+void
+ExTimerCheck(INOUT PEX_TIMER timer);
+
+//******************************************************************************
+// Function ADDED:      ExTimerCheckAll
+// Description:         called on each timer interrupt handling to check for a particular timer if it must be triggered or not;
+// Returns:             void
+// Parameter:           void
+//******************************************************************************
+void
+ExTimerCheckAll(void);

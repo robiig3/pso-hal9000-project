@@ -71,7 +71,9 @@ MutexAcquire(
 
         pCurrentThread->WaitedMutex = Mutex;
         ThreadDonatePriority(pCurrentThread, Mutex->Holder);
-        InsertTailList(&Mutex->WaitingList, &pCurrentThread->ReadyList);
+        //InsertTailList(&Mutex->WaitingList, &pCurrentThread->ReadyList); -- era deja si ii mergea lui vlad
+        //olivia
+        InsertOrderedList(&Mutex->WaitingList, &pCurrentThread->ReadyList, _ThreadComparePriorityReadyList, NULL);
         ThreadTakeBlockLock();
         LockRelease(&Mutex->MutexLock, dummyState);
 

@@ -290,3 +290,10 @@ void
 ThreadSetPriority(
     IN      THREAD_PRIORITY     NewPriority
     );
+
+INT64
+_ThreadComparePriorityReadyList(
+    IN      PLIST_ENTRY             e1,
+    IN      PLIST_ENTRY             e2,
+    IN_OPT  PVOID                   Context
+);

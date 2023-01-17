@@ -36,6 +36,9 @@ typedef struct _THREAD_SYSTEM_DATA
 
     _Guarded_by_(ReadyThreadsLock)
     LIST_ENTRY          ReadyThreadsList;
+
+    _Guarded_by_(ReadyThreadsLock)
+    THREAD_PRIORITY     RunningThreadsMinPriority;
 } THREAD_SYSTEM_DATA, *PTHREAD_SYSTEM_DATA;
 
 static THREAD_SYSTEM_DATA m_threadSystemData;
@@ -477,7 +480,7 @@ ThreadYield(
     LockAcquire(&m_threadSystemData.ReadyThreadsLock, &dummyState);
     if (pThread != pCpu->ThreadData.IdleThread)
     {
-        InsertTailList(&m_threadSystemData.ReadyThreadsList, &pThread->ReadyList);
+        InsertOrderedList(&m_threadSystemData.ReadyThreadsList, &pThread->ReadyList, _ThreadComparePriorityReadyList, NULL);
     }
     if (!bForcedYield)
     {
@@ -532,7 +535,7 @@ ThreadUnblock(
     ASSERT(ThreadStateBlocked == Thread->State);
 
     LockAcquire(&m_threadSystemData.ReadyThreadsLock, &dummyState);
-    InsertTailList(&m_threadSystemData.ReadyThreadsList, &Thread->ReadyList);
+    InsertOrderedList(&m_threadSystemData.ReadyThreadsList, &Thread->ReadyList, _ThreadComparePriorityReadyList, NULL);
     Thread->State = ThreadStateReady;
     LockRelease(&m_threadSystemData.ReadyThreadsLock, dummyState );
     LockRelease(&Thread->BlockLock, oldState);
@@ -1502,6 +1505,40 @@ _ThreadKernelFunction(
 
     ThreadExit(exitStatus);
     NOT_REACHED;
+}
+
+INT64
+_ThreadComparePriorityReadyList(
+    IN      PLIST_ENTRY             e1,
+    IN      PLIST_ENTRY             e2,
+    IN_OPT  PVOID                   Context
+)
+{
+    UNREFERENCED_PARAMETER(Context);
+    PTHREAD pTh1;
+    PTHREAD pTh2;
+
+    THREAD_PRIORITY prio2;
+    THREAD_PRIORITY prio1;
+
+    pTh1 = CONTAINING_RECORD(e1, THREAD, ReadyList);
+    pTh2 = CONTAINING_RECORD(e2, THREAD, ReadyList);
+
+    prio2 = ThreadGetPriority(pTh2);
+    prio1 = ThreadGetPriority(pTh1);
+
+    if (prio2 < prio1) {
+        return -1;
+    }
+    else {
+        if (prio2 > prio1) {
+            return  1;
+        }
+        else {
+            return 0;
+        }
+    }
+}
 }
 
 void ThreadDonatePriority(IN PTHREAD thr, IN PTHREAD trmut) {
